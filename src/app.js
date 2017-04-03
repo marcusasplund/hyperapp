@@ -1,65 +1,63 @@
 var SVG_NS = "http://www.w3.org/2000/svg"
 
 export default function (app) {
+  var state
   var view = app.view || function () {
     return ""
   }
 
-  var model
+  var plugins = app.plugins || []
   var actions = {}
-  var hooks = {
+
+  var events = {
+    onLoad: [],
     onError: [],
     onAction: [],
     onUpdate: [],
     onRender: []
   }
-  var subscriptions = []
+
+  var root
 
   var node
-  var root
   var element
-  var plugins = app.plugins || []
 
   for (var i = -1; i < plugins.length; i++) {
-    var plugin = i < 0 ? app : plugins[i](app)
-    var obj = plugin.model
+    var plugin = i < 0 ? app : plugins[i]({
+      state: state,
+      view: view,
+      actions: actions,
+      events: events
+    })
 
-    if (obj != null) {
-      model = merge(model, obj)
+    if (plugin.state != null) {
+      state = merge(state, plugin.state)
     }
 
-    if (obj = plugin.actions) {
-      init(actions, obj)
-    }
+    init(actions, plugin.actions || [])
 
-    if (obj = plugin.subscriptions) {
-      subscriptions = subscriptions.concat(obj)
-    }
-
-    if (obj = plugin.hooks) {
-      Object.keys(obj).map(function (key) {
-        hooks[key].push(obj[key])
-      })
-    }
+    Object.keys(plugin.events || []).map(function (key) {
+      events[key] = (events[key] || (events[key] = [])).concat(plugin.events[key])
+    })
   }
 
   load(function () {
     root = app.root || document.body
 
-    render(model, view)
+    render(state, view)
 
-    subscriptions.map(function (cb) {
-      cb(model, actions, error)
+    events.onLoad.map(function (cb) {
+      cb(state, actions, error)
     })
   })
 
   function error(error) {
-    if (hooks.onError.length === 0) {
+    if (events.onError.length === 0) {
       throw error
     }
 
-    hooks.onError.map(function (cb) {
-      cb(error)
+    events.onError.map(function (cb) {
+      cb(state, error)
     })
   }
 
@@ -70,22 +68,22 @@ export default function (app) {
 
       if (typeof action === "function") {
         container[key] = function (data) {
-          hooks.onAction.map(function (cb) {
-            cb(name, data)
+          events.onAction.map(function (cb) {
+            cb(state, name, data)
           })
 
-          var result = action(model, data, actions, error)
+          var result = action(state, data, actions, error)
 
           if (result == null || typeof result.then === "function") {
             return result
 
           } else {
-            hooks.onUpdate.map(function (cb) {
-              cb(model, result, data)
+            events.onUpdate.map(function (cb) {
+              cb(state, result, data)
             })
 
-            model = merge(model, result)
-            render(model, view)
+            state = merge(state, result)
+            render(state, view)
           }
         }
       } else {
@@ -104,12 +102,12 @@ export default function (app) {
     }
   }
 
-  function render(model, view) {
-    hooks.onRender.map(function (cb) {
-      view = cb(model, view)
+  function render(state, view) {
+    events.onRender.map(function (cb) {
+      view = cb(state, actions, view)
     })
 
-    element = patch(root, element, node, node = view(model, actions))
+    element = patch(root, element, node, node = view(state, actions))
   }
 
   function merge(a, b) {

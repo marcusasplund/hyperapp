@@ -1,6 +1,8 @@
 export default function (app) {
+  var onRoute = app.events.onRoute || []
+
   return {
-    model: match(app.model, location.pathname),
+    state: match(app.state, location.pathname),
     actions: {
       router: {
         match: match,
@@ -10,21 +12,23 @@ export default function (app) {
         }
       }
     },
-    hooks: {
-      onRender: function (model) {
-        return app.view[model.router.match]
-      }
-    },
-    subscriptions: [
-      function (_, actions) {
-        addEventListener("popstate", function () {
-          actions.router.match(location.pathname)
-        })
-      }
-    ]
+    events: {
+      onLoad: [
+        function (_, actions) {
+          addEventListener("popstate", function () {
+            actions.router.match(location.pathname)
+          })
+        }
+      ],
+      onRender: [
+        function (state) {
+          return app.view[state.router.match]
+        }
+      ]
+    }
   }
 
-  function match(model, data) {
+  function match(state, data) {
     var match
     var params = {}
 
@@ -53,11 +57,17 @@ export default function (app) {
       }
     }
 
-    return {
-      router: {
+    var data = {
         match: match || "*",
         params: params
       }
+
+    onRoute.map(function (cb) {
+      cb(state, app.actions, data)
+    })
+
+    return {
+      router: data
     }
   }
 }
